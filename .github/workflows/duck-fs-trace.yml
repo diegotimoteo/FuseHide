@@ -1,0 +1,63 @@
+name: FuseHide Duck FS Trace (Debug)
+
+on:
+  push:
+    branches: ["diag/duck-fs-trace"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: duck-fs-trace-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    if: github.repository == 'diegotimoteo/FuseHide' && github.ref == 'refs/heads/diag/duck-fs-trace'
+    name: Build diagnostic APK and Zygisk ZIP
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: Checkout full history and submodules
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+          persist-credentials: false
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Build debug only
+        run: |
+          chmod +x gradlew
+          ./gradlew --stacktrace --no-daemon :app:assembleDebug
+
+      - name: Verify APK and collect artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist/duck-fs-trace
+          mapfile -t apks < <(find app/build/outputs/apk/debug -type f -name '*.apk')
+          test "${#apks[@]}" -gt 0
+          build_tools="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)"
+          for apk in "${apks[@]}"; do
+            "$build_tools/aapt" dump badging "$apk" | grep -F "package: name='io.github.xiaotong6666.fusehide'"
+            "$build_tools/apksigner" verify "$apk"
+            cp "$apk" "dist/duck-fs-trace/$(basename "$apk")"
+          done
+          find app/build/zygisk -maxdepth 1 -type f -name '*-debug.zip' -exec cp {} dist/duck-fs-trace/ \;
+          find dist/duck-fs-trace -type f \( -name '*.apk' -o -name '*.zip' \) -print0 | xargs -0 -r sha256sum | tee dist/duck-fs-trace/SHA256SUMS.txt
+          test -n "$(find dist/duck-fs-trace -type f -name '*.zip' -print -quit)"
+
+      - name: Publish debug diagnostic artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: FuseHide-DuckFsTrace-Debug
+          path: dist/duck-fs-trace/*
+          if-no-files-found: error
+          retention-days: 7
