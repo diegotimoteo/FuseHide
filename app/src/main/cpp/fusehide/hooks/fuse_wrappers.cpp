@@ -30,7 +30,7 @@ namespace {
 // This trace never changes a hook's return value or effective hide policy.
 constexpr char kDuckFsTraceTag[] = "FuseHideFsTrace";
 bool IsDuckFsTraceUid(uint32_t uid) {
-    return uid == 10403 || uid == 10426;
+    return uid == 10403 || uid == 10425 || uid == 10426;
 }
 bool IsDuckFsTracePath(std::string_view path) {
     return path.find("com.sukisu.ultra") != std::string_view::npos;
