@@ -86,6 +86,8 @@ android {
             )
         }
         getByName("debug") {
+            // Allow diagnostic APK to coexist with the existing signed LSPosed module.
+            applicationIdSuffix = ".fstrace"
             signingConfigs.findByName("debugKey")?.let { signingConfig = it }
         }
     }

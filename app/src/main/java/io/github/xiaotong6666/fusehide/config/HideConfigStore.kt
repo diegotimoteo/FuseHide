@@ -408,7 +408,7 @@ object HideConfigStore {
 
         appContext.sendBroadcast(
             Intent(ACTION_REQUEST_HIDE_CONFIG)
-                .setComponent(ComponentName(APP_PACKAGE, "$APP_PACKAGE.config.HideConfigRequestReceiver"))
+                .setComponent(ComponentName(APP_PACKAGE, "io.github.xiaotong6666.fusehide.config.HideConfigRequestReceiver"))
                 .addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
                 .putExtra(EXTRA_QUERY_TOKEN, requestToken)
                 .putExtra(EXTRA_REPLY_PENDING_INTENT, replyPendingIntent),
