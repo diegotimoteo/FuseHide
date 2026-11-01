@@ -26,6 +26,16 @@ namespace fusehide {
 
 namespace {
 
+// Diagnostics for the original and fsdiag Duck Detector UIDs.
+// This trace never changes a hook's return value or effective hide policy.
+constexpr char kDuckFsTraceTag[] = "FuseHideFsTrace";
+bool IsDuckFsTraceUid(uint32_t uid) {
+    return uid == 10403 || uid == 10426;
+}
+bool IsDuckFsTracePath(std::string_view path) {
+    return path.find("com.sukisu.ultra") != std::string_view::npos;
+}
+
 thread_local uint32_t gActiveCreateUid = 0;
 thread_local uint32_t gActiveCreateScopeDepth = 0;
 thread_local uint32_t gActivePathPolicyUid = 0;
@@ -837,6 +847,17 @@ extern "C" void WrappedPfLookup(fuse_req_t req, uint64_t parent, const char* nam
     const ScopedFuseRequestSession scopedSession(req);
     DebugRootCallbackProbe(0, "lookup", parent, nullptr);
     const uint32_t uid = RuntimeState::ReqUid(req);
+    if constexpr (kEnableDebugHooks) {
+        if (IsDuckFsTraceUid(uid) && name != nullptr &&
+            std::string_view(name) == "com.sukisu.ultra") {
+            const auto parentPath = LookupTrackedPathForInode(parent);
+            __android_log_print(ANDROID_LOG_INFO, kDuckFsTraceTag,
+                                "lookup.enter uid=%u req=%llu parent=0x%llx path=%s name=%s",
+                                uid, req ? static_cast<unsigned long long>(req->unique) : 0ULL,
+                                static_cast<unsigned long long>(parent),
+                                parentPath ? parentPath->c_str() : "(untracked)", name);
+        }
+    }
     std::string parentPath;
     if (name != nullptr && parent != 0 && ResolveVisibleParentPath(parent, &parentPath) &&
         IsVisibleRootPath(parentPath) && HiddenPathPolicy::IsHiddenRootEntryName(uid, name)) {
@@ -1081,6 +1102,15 @@ extern "C" void WrappedPfLookupPostfilter(fuse_req_t req, uint64_t parent, uint3
                                           struct fuse_entry_bpf_out* febo) {
     const ScopedFuseRequestSession scopedSession(req);
     const uint32_t uid = RuntimeState::ReqUid(req);
+    if constexpr (kEnableDebugHooks) {
+        if (IsDuckFsTraceUid(uid) && name != nullptr &&
+            std::string_view(name) == "com.sukisu.ultra") {
+            __android_log_print(ANDROID_LOG_INFO, kDuckFsTraceTag,
+                                "lookup.postfilter uid=%u req=%llu parent=0x%llx err_in=%u",
+                                uid, req ? static_cast<unsigned long long>(req->unique) : 0ULL,
+                                static_cast<unsigned long long>(parent), error_in);
+        }
+    }
     DebugLogPrint(3, "pf_lookup_postfilter req=%p uid=%u parent=%s name=%s err_in=%u", req,
                   static_cast<unsigned>(uid), InodePath(parent).c_str(),
                   name ? DebugPreview(name).c_str() : "null", error_in);
@@ -1438,6 +1468,17 @@ extern "C" int WrappedReplyEntry(fuse_req_t req, const struct fuse_entry_param* 
     const uint32_t lookupUid = RuntimeState::ReqUid(req);
     const bool hiddenLookupForUid = HiddenPathPolicy::IsTestHiddenUid(lookupUid) &&
                                     (gTrackRootHiddenLookup || gTrackHiddenSubtreeLookup);
+    if constexpr (kEnableDebugHooks) {
+        if (IsDuckFsTraceUid(lookupUid) && gCurrentLookupName == "com.sukisu.ultra") {
+            __android_log_print(ANDROID_LOG_INFO, kDuckFsTraceTag,
+                                "reply.entry uid=%u req=%llu ino=0x%llx tracked=%d root=%d subtree=%d",
+                                lookupUid,
+                                req ? static_cast<unsigned long long>(req->unique) : 0ULL,
+                                e ? static_cast<unsigned long long>(e->ino) : 0ULL,
+                                hiddenLookupForUid ? 1 : 0, gTrackRootHiddenLookup ? 1 : 0,
+                                gTrackHiddenSubtreeLookup ? 1 : 0);
+        }
+    }
     // An ENOENT root lookup cannot learn e->ino through a successful reply.
     // The root sweep already invalidates this first-level dentry in hide-all mode.
     // Avoid scheduling a forever-unresolvable inode invalidation for that child.
@@ -1614,6 +1655,16 @@ extern "C" int WrappedReplyEntry(fuse_req_t req, const struct fuse_entry_param* 
 // https://android.googlesource.com/platform/packages/providers/MediaProvider/+/refs/heads/android14-release/jni/FuseDaemon.cpp#1002
 extern "C" int WrappedReplyAttr(fuse_req_t req, const struct stat* attr, double timeout) {
     const ScopedFuseRequestSession scopedSession(req);
+    if constexpr (kEnableDebugHooks) {
+        const uint32_t uid = RuntimeState::ReqUid(req);
+        if (IsDuckFsTraceUid(uid)) {
+            __android_log_print(ANDROID_LOG_INFO, kDuckFsTraceTag,
+                                "reply.attr uid=%u req=%llu ino=0x%llx mode=%o timeout=%.3f",
+                                uid, req ? static_cast<unsigned long long>(req->unique) : 0ULL,
+                                attr ? static_cast<unsigned long long>(attr->st_ino) : 0ULL,
+                                attr ? static_cast<unsigned int>(attr->st_mode) : 0U, timeout);
+        }
+    }
     const auto fn = gOriginalReplyAttr.get();
     const double replyTimeout = gZeroAttrCacheForCurrentGetattr ? 0.0 : timeout;
     if (gZeroAttrCacheForCurrentGetattr) {
@@ -1838,6 +1889,14 @@ extern "C" int WrappedReplyBuf(fuse_req_t req, const char* buf, size_t size) {
 
 extern "C" int WrappedReplyErr(fuse_req_t req, int err) {
     const ScopedFuseRequestSession scopedSession(req);
+    if constexpr (kEnableDebugHooks) {
+        const uint32_t uid = RuntimeState::ReqUid(req);
+        if (IsDuckFsTraceUid(uid)) {
+            __android_log_print(ANDROID_LOG_INFO, kDuckFsTraceTag,
+                                "reply.err uid=%u req=%llu errno=%d",
+                                uid, req ? static_cast<unsigned long long>(req->unique) : 0ULL, err);
+        }
+    }
 #if defined(__x86_64__)
     if (gReaddirplusContinuation != nullptr && gReaddirplusContinuation->req == req)
         gReaddirplusContinuation->replySent = true;
@@ -1863,6 +1922,16 @@ extern "C" int WrappedReplyErr(fuse_req_t req, int err) {
 extern "C" void WrappedPfGetattr(fuse_req_t req, uint64_t ino, void* fi) {
     const ScopedFuseRequestSession scopedSession(req);
     const uint32_t uid = RuntimeState::ReqUid(req);
+    if constexpr (kEnableDebugHooks) {
+        if (IsDuckFsTraceUid(uid)) {
+            const auto tracked = LookupTrackedPathForInode(ino);
+            __android_log_print(ANDROID_LOG_INFO, kDuckFsTraceTag,
+                                "getattr.enter uid=%u req=%llu ino=0x%llx tracked=%s",
+                                uid, req ? static_cast<unsigned long long>(req->unique) : 0ULL,
+                                static_cast<unsigned long long>(ino),
+                                tracked ? tracked->c_str() : "(untracked)");
+        }
+    }
     gZeroAttrCacheForCurrentGetattr = IsTrackedHiddenSubtreeInode(uid, ino);
     if (HiddenPathPolicy::IsTestHiddenUid(uid)) {
         DebugLogPrint(4, "pf_getattr test uid=%u ino=0x%lx", static_cast<unsigned>(uid),
@@ -1890,6 +1959,13 @@ extern "C" void WrappedPfGetattr(fuse_req_t req, uint64_t ino, void* fi) {
 // https://android.googlesource.com/platform/packages/providers/MediaProvider/+/refs/heads/android14-release/jni/FuseDaemon.cpp#1985
 extern "C" int WrappedLstat(const char* path, struct stat* st) {
     const std::string_view pathView = path != nullptr ? std::string_view(path) : std::string_view();
+    if constexpr (kEnableDebugHooks) {
+        if (IsDuckFsTracePath(pathView)) {
+            __android_log_print(ANDROID_LOG_INFO, kDuckFsTraceTag,
+                                "lower.lstat path=%s in_getattr=%d getattr_uid=%u",
+                                path ? path : "(null)", gInPfGetattr ? 1 : 0, gPfGetattrUid);
+        }
+    }
     if (gInPfGetattr && gPfGetattrIno != 0 &&
         HiddenPathPolicy::IsHiddenRootDirectoryPath(pathView)) {
         // Recover the volume identity for Sessions first observed after creation.
@@ -1939,6 +2015,13 @@ extern "C" int WrappedLstat(const char* path, struct stat* st) {
 
 extern "C" int WrappedStat(const char* path, struct stat* st) {
     const std::string_view pathView = path != nullptr ? std::string_view(path) : std::string_view();
+    if constexpr (kEnableDebugHooks) {
+        if (IsDuckFsTracePath(pathView)) {
+            __android_log_print(ANDROID_LOG_INFO, kDuckFsTraceTag,
+                                "lower.stat path=%s in_readdir_postfilter=%d readdir_uid=%u",
+                                path ? path : "(null)", gInPfReaddirPostfilter ? 1 : 0, gPfReaddirUid);
+        }
+    }
     if (gInPfReaddirPostfilter &&
         IsHiddenPathClassification(ClassifyHiddenPath(gPfReaddirUid, pathView))) {
         DebugLogPrint(4, "hide readdir stat uid=%u path=%s", static_cast<unsigned>(gPfReaddirUid),
