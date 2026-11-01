@@ -1,0 +1,63 @@
+name: FuseHide BPF Parent PoC (Debug)
+
+on:
+  push:
+    branches: ["diag/fuse-bpf-parent-poc"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: duck-bpf-parent-poc-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    if: github.repository == 'diegotimoteo/FuseHide' && github.ref == 'refs/heads/diag/fuse-bpf-parent-poc'
+    name: Build diagnostic APK and Zygisk ZIP
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: Checkout full history and submodules
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+          persist-credentials: false
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Build debug only
+        run: |
+          chmod +x gradlew
+          ./gradlew --stacktrace --no-daemon :app:assembleDebug
+
+      - name: Verify APK and collect artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist/duck-bpf-parent-poc
+          mapfile -t apks < <(find app/build/outputs/apk/debug -type f -name '*.apk')
+          test "${#apks[@]}" -gt 0
+          build_tools="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)"
+          for apk in "${apks[@]}"; do
+            "$build_tools/aapt" dump badging "$apk" | grep -F "package: name='io.github.xiaotong6666.fusehide.bpfpoc'"
+            "$build_tools/apksigner" verify "$apk"
+            cp "$apk" "dist/duck-bpf-parent-poc/$(basename "$apk")"
+          done
+          find app/build/zygisk -maxdepth 1 -type f -name '*-debug.zip' -exec cp {} dist/duck-bpf-parent-poc/ \;
+          find dist/duck-bpf-parent-poc -type f \( -name '*.apk' -o -name '*.zip' \) -print0 | xargs -0 -r sha256sum | tee dist/duck-bpf-parent-poc/SHA256SUMS.txt
+          test -n "$(find dist/duck-bpf-parent-poc -type f -name '*.zip' -print -quit)"
+
+      - name: Publish debug diagnostic artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: FuseHide-BpfParent-PoC
+          path: dist/duck-bpf-parent-poc/*
+          if-no-files-found: error
+          retention-days: 7
