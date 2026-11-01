@@ -46,7 +46,7 @@ jobs:
           test "${#apks[@]}" -gt 0
           build_tools="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)"
           for apk in "${apks[@]}"; do
-            "$build_tools/aapt" dump badging "$apk" | grep -F "package: name='io.github.xiaotong6666.fusehide.fstrace'"
+            "$build_tools/aapt" dump badging "$apk" | grep -F "package: name='io.github.xiaotong6666.fusehide.fstrace2'"
             "$build_tools/apksigner" verify "$apk"
             cp "$apk" "dist/duck-fs-trace/$(basename "$apk")"
           done

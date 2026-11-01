@@ -2,6 +2,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
     <application
-        android:label="FuseHide FS Trace"
+        android:label="FuseHide FS Trace 2"
         tools:replace="android:label" />
 </manifest>

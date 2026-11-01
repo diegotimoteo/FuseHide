@@ -26,7 +26,7 @@ import android.os.Process;
 import android.util.Log;
 
 public final class StatusBroadcastReceiver extends BroadcastReceiver {
-    private static final String APP_PACKAGE = "io.github.xiaotong6666.fusehide";
+    private static final String APP_PACKAGE = io.github.xiaotong6666.fusehide.BuildConfig.APPLICATION_ID;
     private static final String ACTION_GET_STATUS = APP_PACKAGE + ".GET_STATUS";
     private static final String ACTION_SET_STATUS = APP_PACKAGE + ".SET_STATUS";
     private static final String EXTRA_STATUS_QUERY_TOKEN = APP_PACKAGE + ".extra.STATUS_QUERY_TOKEN";
