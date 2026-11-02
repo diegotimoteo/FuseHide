@@ -1617,38 +1617,6 @@ extern "C" int WrappedReplyEntry(fuse_req_t req, const struct fuse_entry_param* 
             }
         }
     }
-    // EXPERIMENT ONLY: Android installs FUSE-BPF backing on Android/data and
-    // Android/obb, before resolving their package children. Prevent a BPF
-    // program/backing file from being attached to these parent directories
-    // in this isolated debug build, so subsequent child lookups can reach
-    // MediaProvider's existing per-UID hide policy instead of bypassing it.
-    // This affects the whole MediaProvider volume, not just the Duck UID.
-    // Never ship this gate as-is without verifying normal app storage access.
-    if (e != nullptr && gCurrentLookupParentInode != 0 &&
-        (gCurrentLookupName == "data" || gCurrentLookupName == "obb")) {
-        const auto parentPath = LookupTrackedPathForInode(gCurrentLookupParentInode);
-        if (parentPath.has_value() &&
-            parentPath->rfind("/storage/emulated/", 0) == 0 &&
-            parentPath->ends_with("/Android")) {
-            // Android's fuse_kernel.h: FUSE_ACTION_REMOVE=1.
-            // Explicit removal prevents propagation of the backing inode/BPF
-            // into the package-directory lookup path.
-            patchedEntry = *e;
-            patchedEntry.bpf_action = 1;
-            patchedEntry.backing_action = 1;
-            patchedEntry.bpf_fd = 0;
-            patchedEntry.backing_fd = 0;
-            patchedEntry.entry_timeout = 0.0;
-            patchedEntry.attr_timeout = 0.0;
-            replyEntry = &patchedEntry;
-            __android_log_print(
-                ANDROID_LOG_WARN, "FuseHideBpfPoc",
-                "disabled BPF backing at path=%s/%.*s uid=%u",
-                parentPath->c_str(),
-                static_cast<int>(gCurrentLookupName.size()), gCurrentLookupName.data(),
-                lookupUid);
-        }
-    }
     if (e != nullptr && forceUncachedReplyEntry && replyEntry == e) {
         patchedEntry = *e;
         patchedEntry.entry_timeout = 0.0;

@@ -14,7 +14,8 @@ concurrency:
 
 jobs:
   build:
-    if: github.repository == 'diegotimoteo/FuseHide' && github.ref == 'refs/heads/diag/fuse-bpf-parent-poc'
+    # Disabled: experiment caused system-wide app launch failures on Android 17.
+    if: false
     name: Build diagnostic APK and Zygisk ZIP
     runs-on: ubuntu-24.04
     timeout-minutes: 90
